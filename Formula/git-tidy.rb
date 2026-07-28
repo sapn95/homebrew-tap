@@ -9,7 +9,7 @@
 class GitTidy < Formula
   desc "Keep a directory full of git checkouts clean: sync, prune, clean, sweep"
   homepage "https://github.com/sapn95/git-tidy"
-  version "1.0.2"
+  version "1.1.0"
   license "MIT"
 
   on_macos do
@@ -20,28 +20,29 @@ class GitTidy < Formula
     end
 
     on_arm do
-      url "https://github.com/sapn95/git-tidy/releases/download/v1.0.2/git-tidy-macos-arm64.tar.gz"
-      sha256 "5ee99ce04ae785c374a39e5726a4e128fbc5db7874790b23de6fcf117db80b81"
+      url "https://github.com/sapn95/git-tidy/releases/download/v1.1.0/git-tidy-macos-arm64.tar.gz"
+      sha256 "d74022b42f14291fcad3cdc3881eb6d8e807b0456f62f131b9a87ed14df62a65"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/sapn95/git-tidy/releases/download/v1.0.2/git-tidy-linux-arm64.tar.gz"
-      sha256 "74b3385c1747251a99d56eeb9bcc642328f246cecded9877235b177d9e97119a"
+      url "https://github.com/sapn95/git-tidy/releases/download/v1.1.0/git-tidy-linux-arm64.tar.gz"
+      sha256 "665cd246c60beda6ca10ce8c4aa9f434de2df6d0f8a50316e7548826bcb4c106"
     end
     on_intel do
-      url "https://github.com/sapn95/git-tidy/releases/download/v1.0.2/git-tidy-linux-x86_64.tar.gz"
-      sha256 "458b62a71be97eed39f08e1c3f3746c82db81650217d179cd28cdecf9f62068b"
+      url "https://github.com/sapn95/git-tidy/releases/download/v1.1.0/git-tidy-linux-x86_64.tar.gz"
+      sha256 "9e592419d5c8aeeb7d89418b9b5951cbcaa07045c980f51339df6384f9f3ef5a"
     end
   end
 
   def install
+    # Before libexec.install, which would otherwise sweep the man page in with
+    # everything else. git intercepts `git tidy --help` and looks for a man page
+    # rather than passing the flag through, so one has to be where man finds it.
+    man1.install "git-tidy.1" if File.exist?("git-tidy.1")
     libexec.install Dir["*"]
     bin.install_symlink libexec/"git-tidy"
-    # git intercepts `git tidy --help` and looks for a man page rather than
-    # passing the flag through, so one has to exist for that to work.
-    man1.install "#{buildpath}/git-tidy.1" if File.exist?("#{buildpath}/git-tidy.1")
   end
 
   test do
