@@ -10,8 +10,8 @@ class Pfadi < Formula
   # url and sha256 point at the last release, not at VERSION. They trail it by
   # design: the checksum of a tag's tarball cannot be known before the tag
   # exists, so the release workflow rewrites both once it does.
-  url "https://github.com/sapn95/pfadi/archive/refs/tags/v0.12.0.tar.gz"
-  sha256 "67ca619ceaa8ed30c93684e32a0421ff9661108012c3289fae3550e3776a813c"
+  url "https://github.com/sapn95/pfadi/archive/refs/tags/v0.13.0.tar.gz"
+  sha256 "8bfd096e4022221a1680a738c78439ff29d25a8750722d53da0a2ad3dee9fd85"
   license "MIT"
   head "https://github.com/sapn95/pfadi.git", branch: "main"
 
@@ -43,16 +43,25 @@ class Pfadi < Formula
       exec /usr/bin/open -a "#{opt_prefix}/Pfadi.app" "${1:-$PWD}"
     LAUNCHER
     (bin/"pfadi").chmod 0755
+
+    # The one-command way off Finder. Installed rather than left in the repo,
+    # because somebody who installed a binary should not have to clone to find
+    # the script that makes it usable.
+    bin.install "scripts/use-instead-of-finder.sh" => "pfadi-instead-of-finder"
   end
 
   def caveats
     <<~CAVEATS
-      pfadi is installed as a bundle inside the Cellar. To have it show up in
-      Spotlight, Launchpad and `open -a`, link it into your applications:
+      To use pfadi instead of Finder, one command does the lot and says what it
+      cannot do:
 
-        ln -sfn #{opt_prefix}/Pfadi.app ~/Applications/Pfadi.app
+        pfadi-instead-of-finder --apply
 
-      From a terminal it works without that:
+      It links the app into ~/Applications so Spotlight finds it, and makes
+      `open .` in a terminal go to pfadi. `pfadi-instead-of-finder --undo` puts
+      everything back.
+
+      From a terminal it works without any of that:
 
         pfadi           # the current directory
         pfadi ~/git     # somewhere else
@@ -67,6 +76,9 @@ class Pfadi < Formula
     # The launcher must hand over to LaunchServices rather than exec the
     # binary, or `pfadi ~/git` holds the terminal it was typed into.
     assert_match "/usr/bin/open", (bin/"pfadi").read
+    # The switch script must refuse to touch anything without --apply.
+    assert_match "Nothing has been changed",
+      shell_output("PFADI_APP=#{prefix}/Pfadi.app #{bin}/pfadi-instead-of-finder")
     system "plutil", "-lint", prefix/"Pfadi.app/Contents/Info.plist"
     assert_match version.to_s,
       shell_output("/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' " \
