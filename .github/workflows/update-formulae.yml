@@ -1,0 +1,87 @@
+---
+name: update formulae
+
+# Runs here rather than being pushed in from each project. A workflow may write
+# to its own repository with the token it is handed, so a tap that updates
+# itself needs no secret at all. The alternative is a personal access token in
+# every project, each of which expires, and none of which can be copied from
+# another because a secret cannot be read back once it is set.
+on:
+  schedule:
+    # Twice an hour. A release should be installable within minutes of being
+    # cut, and asking GitHub for three tags costs nothing.
+    - cron: "5,35 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "Formula/**"
+      - "scripts/update_formulae.py"
+      - ".github/workflows/update-formulae.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Two runs rewriting the same file would race, and the loser would push a
+  # formula built from what the winner had already replaced.
+  group: update-formulae
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: point every formula at its newest release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: look for new releases
+        id: update
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/update_formulae.py
+
+      - name: show what changed
+        if: steps.update.outputs.changed == 'true'
+        run: git diff --stat
+
+      - name: open a pull request with the bumps
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The repository owner rather than the bot: GitHub counts a commit
+          # author as a contributor, and this is the tap updating itself rather
+          # than a second person turning up.
+          git config user.name "sapn95"
+          git config user.email "sapn95@users.noreply.github.com"
+
+          branch="formulae/$(date -u +%Y%m%d-%H%M%S)"
+          git checkout -b "$branch"
+          git add Formula
+          git commit -m "Point the formulae at the newest releases"
+          git push origin "$branch"
+
+          # A pull request rather than a push, so there is something to look at
+          # afterwards, then merged on its own so nobody has to click. The
+          # checksums were verified against the real downloads before this ran;
+          # a formula whose download failed was left alone and never reaches
+          # here.
+          body=$(
+            printf '%s\n' \
+              "Found by the scheduled check." \
+              "" \
+              "Every checksum here was computed from the file its url points" \
+              "at. Anything that could not be downloaded was left alone rather" \
+              "than bumped, because a new version with a stale checksum fails" \
+              "at install time with a mismatch nobody can explain."
+          )
+          gh pr create --base main --head "$branch" \
+            --title "Point the formulae at the newest releases" \
+            --body "$body"
+          gh pr merge "$branch" --squash --delete-branch --admin ||
+            gh pr merge "$branch" --squash --delete-branch --auto
