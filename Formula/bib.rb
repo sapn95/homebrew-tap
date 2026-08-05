@@ -1,0 +1,46 @@
+# Kept current by .github/workflows/update-formulae.yml, which asks each project
+# for its newest release and rewrites the version and checksums below to match.
+#
+# The published asset is a Nuitka standalone build: compiled, so there is no
+# interpreter and no readable source on disk. It is deliberately not a Nuitka
+# *onefile* binary — onefile unpacks its whole payload on every single run, which
+# made even `bib --help` take about four seconds. The directory form does not
+# unpack anything and starts in well under a second.
+class Bib < Formula
+  desc "Real browser in a box: a Linux container or a macOS VM"
+  homepage "https://github.com/sapn95/browser-in-a-box"
+  license "MIT"
+
+  on_macos do
+    on_intel do
+      # Only the container variant would work here anyway, and no Intel Mac binary
+      # is published; say so instead of failing with a missing url.
+      odie "bib ships macOS binaries for Apple silicon only; run ./bib.py from a checkout"
+    end
+
+    on_arm do
+      url "https://github.com/sapn95/browser-in-a-box/releases/download/v3.3.0/bib-macos-arm64.tar.gz"
+      sha256 "f40ba8d52edd7460b2ce12c9aee12ab56cc42e70768ecbe995f2f2fd62e457c9"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/sapn95/browser-in-a-box/releases/download/v3.3.0/bib-linux-arm64.tar.gz"
+      sha256 "6853ec619014196148d1da62f643719c95cb4a2d73d27b8f03e0ff0528d11a63"
+    end
+    on_intel do
+      url "https://github.com/sapn95/browser-in-a-box/releases/download/v3.3.0/bib-linux-x86_64.tar.gz"
+      sha256 "0699477899097a997d82678f976ae3fdd66f1c68bc268c97fe62b13485de1467"
+    end
+  end
+
+  def install
+    libexec.install Dir["*"]
+    bin.install_symlink libexec/"bib"
+  end
+
+  test do
+    assert_match "bib #{version}", shell_output("#{bin}/bib --version")
+  end
+end
