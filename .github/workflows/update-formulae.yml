@@ -8,14 +8,21 @@ name: update formulae
 # another because a secret cannot be read back once it is set.
 on:
   schedule:
-    # Twice an hour. A release should be installable within minutes of being
-    # cut, and asking GitHub for three tags costs nothing.
-    - cron: "5,35 * * * *"
+    # Hourly, and at seventeen past rather than on the hour: GitHub runs
+    # scheduled workflows late when the minute is busy, and every whole hour is
+    # the busiest minute there is.
+    #
+    # It was twice an hour, which was too often for how late these actually
+    # start. Two scheduled runs met in the concurrency group below, the queued
+    # one was cancelled, and a cancelled run is reported as a failed one. An
+    # hour of headroom for a job that takes ten seconds is enough.
+    - cron: "17 * * * *"
   workflow_dispatch:
   push:
     branches: [main]
+    # Not Formula/**: this workflow commits there, so listing it would make
+    # every successful run start another one that has nothing left to do.
     paths:
-      - "Formula/**"
       - "scripts/update_formulae.py"
       - ".github/workflows/update-formulae.yml"
 
@@ -24,7 +31,9 @@ permissions:
 
 concurrency:
   # Two runs rewriting the same file would race, and the loser would push a
-  # formula built from what the winner had already replaced.
+  # formula built from what the winner had already replaced. Never
+  # cancel-in-progress: a run stopped between writing and pushing leaves a
+  # branch nobody asked for.
   group: update-formulae
   cancel-in-progress: false
 
