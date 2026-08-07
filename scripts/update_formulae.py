@@ -21,15 +21,26 @@ Nothing is written unless every checksum for that formula was computed from a
 download that actually succeeded. A formula with a new version and a stale
 checksum is worse than one that was left alone: brew fails at install time with
 a mismatch, and the person hitting it has no idea why.
+
+The formula *body* comes from the project too, not only its version. This used
+to bump the url and the checksum and leave everything else exactly as it was,
+so a project that changed what its formula installs shipped a release where
+that change reached nobody. pfadi replaced a shell wrapper with a real command
+and added two manual pages; two releases later the tap was still installing the
+wrapper, because the tap had never been told. If a project's release carries a
+Formula/<name>.rb for itself, that file is now the new formula and only its url
+and checksums are rewritten here.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import re
 import sys
+import tarfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -102,8 +113,48 @@ def checksum(url: str) -> str:
     return hashlib.sha256(request(url, binary=True)).hexdigest()
 
 
+def formula_from_release(owner: str, repo: str, tag: str, name: str) -> str | None:
+    """The formula a project keeps for itself, out of its own source tarball.
+
+    Returns None when the project does not carry one, which is the normal case
+    for anything that is not packaged by its own repository. The formula in
+    this tap is then left as the source of truth for everything but the
+    version.
+    """
+    url = f"https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.tar.gz"
+    try:
+        archive = request(url, binary=True)
+    except Exception:  # noqa: BLE001 - a project with no source tarball is fine
+        return None
+
+    try:
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
+            for member in tar.getmembers():
+                # <repo>-<tag>/Formula/<name>.rb, and only that: a tarball is
+                # somebody else's data, and a path with .. in it or an absolute
+                # path is how an archive writes outside where it was extracted.
+                parts = Path(member.name).parts
+                if len(parts) != 3 or parts[1] != "Formula" or parts[2] != name:
+                    continue
+                if not member.isfile() or member.size > 200_000:
+                    continue
+                handle = tar.extractfile(member)
+                if handle is None:
+                    return None
+                return handle.read().decode("utf-8")
+    except Exception as error:  # noqa: BLE001 - reported, not swallowed
+        print(f"{name}: could not read the formula out of {tag}: {error}")
+    return None
+
+
 def rewrite(text: str, old_tag: str, new_tag: str) -> tuple[str, list[str]]:
-    """Returns the updated formula and what changed, or raises if a download failed."""
+    """Returns the updated formula and what changed, or raises if a download failed.
+
+    `old_tag` is whatever tag the text being rewritten points at, which is not
+    always the tag this tap was on: when the body has just been replaced by the
+    project's own copy, that copy trails its repository by one release, because
+    the checksum of a tag's tarball cannot be known until the tag exists.
+    """
     notes: list[str] = []
     lines = text.splitlines(keepends=True)
     updated: list[str] = []
@@ -169,12 +220,24 @@ def main() -> int:
         if not new:
             print(f"{path.name}: {owner}/{repo} has no releases yet")
             continue
-        if new == old:
+        # The project's own copy, when it keeps one, so a release that changed
+        # what the formula installs actually reaches the people who installed
+        # it. Fetched before the "already at" check on purpose: a formula whose
+        # url is current can still have an install block that is two releases
+        # behind, which is exactly how this tap shipped a shell wrapper long
+        # after the project had replaced it.
+        source = formula_from_release(owner, repo, new, path.name)
+        base = source if source is not None else text
+        base_tag = current_tag(base) or old
+
+        if new == old and (source is None or base.strip() == text.strip()):
             print(f"{path.name}: already at {new}")
             continue
 
         try:
-            updated, notes = rewrite(text, old, new)
+            updated, notes = rewrite(base, base_tag, new)
+            if source is not None and base is not text:
+                notes.append("formula from the project")
         except Exception as error:  # noqa: BLE001
             # Left alone on purpose. A new version with a stale checksum fails
             # at install time with a mismatch nobody can explain.
