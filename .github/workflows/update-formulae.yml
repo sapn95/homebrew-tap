@@ -72,6 +72,17 @@ jobs:
           branch="formulae/$(date -u +%Y%m%d-%H%M%S)"
           git checkout -b "$branch"
           git add Formula
+
+          # A second opinion, from git rather than from the script. The step
+          # above says something changed; this asks the only thing that
+          # actually knows. When they disagreed, `git commit` found nothing to
+          # commit, exited 1 under `set -e`, and every scheduled run went red
+          # for a tap that was completely up to date.
+          if git diff --cached --quiet; then
+            echo "the formulae were already correct, nothing to open"
+            exit 0
+          fi
+
           git commit -m "Point the formulae at the newest releases"
           git push origin "$branch"
 

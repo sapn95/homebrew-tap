@@ -175,6 +175,16 @@ def rewrite(text: str, old_tag: str, new_tag: str) -> tuple[str, list[str]]:
             new_url = url_match.group(2).replace(old_tag, new_tag)
             # Downloaded now so the checksum below belongs to this exact url.
             # A 404 here raises and the formula is left untouched.
+            #
+            # Unconditionally, including when the url already names the tag
+            # being moved to and nothing about the line changes. The checksum
+            # in a project's own formula is not to be trusted: a release
+            # workflow cannot know it before the tag exists, so the copy inside
+            # the tarball for v3.3.1 carries the checksums of v3.3.0 until a
+            # follow-up commit fixes them. Measured, not assumed --
+            # browser-in-a-box v3.3.1 ships f40ba8d5..., which is the v3.3.0
+            # asset. Skipping this download to save a round trip would put that
+            # number in the tap and fail every install with a mismatch.
             pending_sha = checksum(new_url)
             updated.append(line.replace(url_match.group(2), new_url))
             notes.append(new_url.rsplit("/", 1)[-1])
@@ -230,9 +240,11 @@ def main() -> int:
         base = source if source is not None else text
         base_tag = current_tag(base) or old
 
-        if new == old and (source is None or base.strip() == text.strip()):
-            print(f"{path.name}: already at {new}")
-            continue
+        # No shortcut on the tag alone. A formula whose url is already current
+        # can still have an install block two releases behind, which is the
+        # state this whole thing exists to fix, so the only honest test is
+        # whether the rewritten text differs from what is on disk. That is
+        # decided after the rewrite, below.
 
         try:
             updated, notes = rewrite(base, base_tag, new)
@@ -243,6 +255,15 @@ def main() -> int:
             # at install time with a mismatch nobody can explain.
             print(f"{path.name}: {old} to {new} failed, left alone: {error}")
             failed = True
+            continue
+
+        # Against what is actually in the file, not against whether a rewrite
+        # ran. Comparing the project's copy to the tap's said "different" every
+        # hour for a formula the rewrite then turned back into exactly what was
+        # already there: nothing to commit, `git commit` exits 1, and every
+        # scheduled run went red for a tap that was perfectly up to date.
+        if updated == text:
+            print(f"{path.name}: already at {new}")
             continue
 
         path.write_text(updated)
