@@ -230,9 +230,11 @@ def main() -> int:
         base = source if source is not None else text
         base_tag = current_tag(base) or old
 
-        if new == old and (source is None or base.strip() == text.strip()):
-            print(f"{path.name}: already at {new}")
-            continue
+        # No shortcut on the tag alone. A formula whose url is already current
+        # can still have an install block two releases behind, which is the
+        # state this whole thing exists to fix, so the only honest test is
+        # whether the rewritten text differs from what is on disk. That is
+        # decided after the rewrite, below.
 
         try:
             updated, notes = rewrite(base, base_tag, new)
@@ -243,6 +245,15 @@ def main() -> int:
             # at install time with a mismatch nobody can explain.
             print(f"{path.name}: {old} to {new} failed, left alone: {error}")
             failed = True
+            continue
+
+        # Against what is actually in the file, not against whether a rewrite
+        # ran. Comparing the project's copy to the tap's said "different" every
+        # hour for a formula the rewrite then turned back into exactly what was
+        # already there: nothing to commit, `git commit` exits 1, and every
+        # scheduled run went red for a tap that was perfectly up to date.
+        if updated == text:
+            print(f"{path.name}: already at {new}")
             continue
 
         path.write_text(updated)
