@@ -42,8 +42,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
+      # contents only: there is no pull request to open any more.
       contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@v7
 
@@ -57,10 +57,44 @@ jobs:
         if: steps.update.outputs.changed == 'true'
         run: git diff --stat
 
-      - name: open a pull request with the bumps
+      # Checked here rather than after the fact.
+      #
+      # A push made with the Actions token triggers no workflows, which is
+      # GitHub's own loop prevention, so ci.yml will not run on what this job
+      # writes however main is protected. The check has to live in the job that
+      # does the writing, or it does not happen at all.
+      #
+      # The same `ruby -c` ci.yml runs, for the same reason it gives: it
+      # catches the one failure a rewrite can actually cause, a file Homebrew
+      # cannot parse, without a Homebrew install and a network round trip per
+      # formula.
+      - name: every formula is still valid ruby
         if: steps.update.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for formula in Formula/*.rb; do
+            ruby -c "$formula" >/dev/null
+            echo "ok  $formula"
+          done
+
+      - name: commit straight to main
+        # There is no pull request any more, and that is a decision rather than
+        # a shortcut.
+        #
+        # It opened one for two days and merged none of them. A pull request
+        # created with the Actions token triggers no workflows, so the checks
+        # main required could never report; the token is not an administrator,
+        # so it could not bypass them; and auto-merge is off for this
+        # repository. Three piled up unmerged in one morning while the formula
+        # sat behind, and the run went red for having done its job.
+        #
+        # What the pull request bought was review, and nobody reviews a
+        # machine-written checksum. What it cost was a human pressing a button
+        # for every release. So main takes the commit directly, the check that
+        # mattered runs above before anything is pushed, and main keeps the two
+        # rules that protect it from this job as much as from anybody: it
+        # cannot be deleted and it cannot be force-pushed.
+        if: steps.update.outputs.changed == 'true'
         run: |
           # The repository owner rather than the bot: GitHub counts a commit
           # author as a contributor, and this is the tap updating itself rather
@@ -68,62 +102,20 @@ jobs:
           git config user.name "sapn95"
           git config user.email "sapn95@users.noreply.github.com"
 
-          branch="formulae/$(date -u +%Y%m%d-%H%M%S)"
-          git checkout -b "$branch"
           git add Formula
 
-          # A second opinion, from git rather than from the script. The step
-          # above says something changed; this asks the only thing that
-          # actually knows. When they disagreed, `git commit` found nothing to
-          # commit, exited 1 under `set -e`, and every scheduled run went red
-          # for a tap that was completely up to date.
+          # A second opinion, from git rather than from the script. When the two
+          # disagreed, `git commit` found nothing to commit, exited 1 under
+          # `set -e`, and every scheduled run went red for a tap that was
+          # completely up to date.
           if git diff --cached --quiet; then
-            echo "the formulae were already correct, nothing to open"
+            echo "the formulae were already correct, nothing to commit"
             exit 0
           fi
 
           git commit -m "Point the formulae at the newest releases"
-          git push origin "$branch"
 
-          # A pull request rather than a push, so there is something to look at
-          # afterwards, then merged on its own so nobody has to click. The
-          # checksums were verified against the real downloads before this ran;
-          # a formula whose download failed was left alone and never reaches
-          # here.
-          body=$(
-            printf '%s\n' \
-              "Found by the scheduled check." \
-              "" \
-              "Every checksum here was computed from the file its url points" \
-              "at. Anything that could not be downloaded was left alone rather" \
-              "than bumped, because a new version with a stale checksum fails" \
-              "at install time with a mismatch nobody can explain."
-          )
-          gh pr create --base main --head "$branch" \
-            --title "Point the formulae at the newest releases" \
-            --body "$body"
-          # Merged if it can be, left open if it cannot, and green either way.
-          #
-          # Neither route works unattended here, and both fail for a reason
-          # that is not about this formula:
-          #
-          #   --admin  "4 of 4 required status checks are expected". They can
-          #            never report: a pull request created with the Actions
-          #            token triggers no workflows, which is GitHub's own loop
-          #            prevention. And this token is not an administrator, so
-          #            it cannot bypass the requirement either.
-          #   --auto   "Auto merge is not allowed for this repository."
-          #
-          # Failing here said the tap was broken when what had actually
-          # happened is that it did its job and opened a pull request with the
-          # right change in it. A run that goes red for a correct outcome is a
-          # run people stop reading, so this says what is waiting and stops.
-          if gh pr merge "$branch" --squash --delete-branch --admin 2>/dev/null; then
-            echo "merged"
-          elif gh pr merge "$branch" --squash --delete-branch --auto 2>/dev/null; then
-            echo "queued behind its checks"
-          else
-            url=$(gh pr view "$branch" --json url -q .url)
-            echo "::notice::the formulae are updated in $url and it is waiting to be merged"
-            echo "opened $url, which needs a human to merge it"
-          fi
+          # Rebased rather than forced. Somebody may have pushed while this ran,
+          # and this job's commit is never worth more than theirs.
+          git pull --rebase --quiet origin main
+          git push origin HEAD:main
