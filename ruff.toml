@@ -1,0 +1,18 @@
+# The same settings the other Python repositories here use, so a script that
+# moves between them does not change shape on the way. There is no pyproject.toml
+# in a tap — nothing here is packaged — so the config stands on its own.
+line-length = 100
+target-version = "py310"
+
+[lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import sorting
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "S",        # bandit (security)
+    "SIM",      # simplify
+    "C90",      # mccabe complexity
+    "RUF",
+]
