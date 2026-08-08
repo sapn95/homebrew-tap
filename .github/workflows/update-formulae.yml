@@ -102,5 +102,28 @@ jobs:
           gh pr create --base main --head "$branch" \
             --title "Point the formulae at the newest releases" \
             --body "$body"
-          gh pr merge "$branch" --squash --delete-branch --admin ||
-            gh pr merge "$branch" --squash --delete-branch --auto
+          # Merged if it can be, left open if it cannot, and green either way.
+          #
+          # Neither route works unattended here, and both fail for a reason
+          # that is not about this formula:
+          #
+          #   --admin  "4 of 4 required status checks are expected". They can
+          #            never report: a pull request created with the Actions
+          #            token triggers no workflows, which is GitHub's own loop
+          #            prevention. And this token is not an administrator, so
+          #            it cannot bypass the requirement either.
+          #   --auto   "Auto merge is not allowed for this repository."
+          #
+          # Failing here said the tap was broken when what had actually
+          # happened is that it did its job and opened a pull request with the
+          # right change in it. A run that goes red for a correct outcome is a
+          # run people stop reading, so this says what is waiting and stops.
+          if gh pr merge "$branch" --squash --delete-branch --admin 2>/dev/null; then
+            echo "merged"
+          elif gh pr merge "$branch" --squash --delete-branch --auto 2>/dev/null; then
+            echo "queued behind its checks"
+          else
+            url=$(gh pr view "$branch" --json url -q .url)
+            echo "::notice::the formulae are updated in $url and it is waiting to be merged"
+            echo "opened $url, which needs a human to merge it"
+          fi
