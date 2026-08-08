@@ -62,7 +62,11 @@ def request(url: str, *, binary: bool = False):
     if token and url.startswith(API):
         headers["Authorization"] = f"Bearer {token}"
         headers["Accept"] = "application/vnd.github+json"
-    with urllib.request.urlopen(urllib.request.Request(url, headers=headers)) as response:
+    # The scheme audit is answered here rather than silenced blind: every url
+    # is built from the https API base or came back from it, so there is no
+    # `file:` for a caller to slip in.
+    wanted = urllib.request.Request(url, headers=headers)  # noqa: S310
+    with urllib.request.urlopen(wanted) as response:  # noqa: S310
         return response.read() if binary else json.loads(response.read())
 
 
@@ -124,7 +128,7 @@ def formula_from_release(owner: str, repo: str, tag: str, name: str) -> str | No
     url = f"https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.tar.gz"
     try:
         archive = request(url, binary=True)
-    except Exception:  # noqa: BLE001 - a project with no source tarball is fine
+    except Exception:  # a project with no source tarball is fine
         return None
 
     try:
@@ -142,7 +146,7 @@ def formula_from_release(owner: str, repo: str, tag: str, name: str) -> str | No
                 if handle is None:
                     return None
                 return handle.read().decode("utf-8")
-    except Exception as error:  # noqa: BLE001 - reported, not swallowed
+    except Exception as error:  # reported, not swallowed
         print(f"{name}: could not read the formula out of {tag}: {error}")
     return None
 
@@ -222,7 +226,7 @@ def main() -> int:
 
         try:
             new = latest_tag(owner, repo)
-        except Exception as error:  # noqa: BLE001 - reported, not swallowed
+        except Exception as error:  # reported, not swallowed
             print(f"{path.name}: could not ask {owner}/{repo}: {error}")
             failed = True
             continue
@@ -250,7 +254,7 @@ def main() -> int:
             updated, notes = rewrite(base, base_tag, new)
             if source is not None and base is not text:
                 notes.append("formula from the project")
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             # Left alone on purpose. A new version with a stale checksum fails
             # at install time with a mismatch nobody can explain.
             print(f"{path.name}: {old} to {new} failed, left alone: {error}")

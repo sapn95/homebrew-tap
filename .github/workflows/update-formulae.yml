@@ -1,4 +1,3 @@
----
 name: update formulae
 
 # Runs here rather than being pushed in from each project. A workflow may write

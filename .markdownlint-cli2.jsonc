@@ -1,0 +1,9 @@
+{
+  "config": {
+    // Prose wraps at whatever reads well; a hard column limit fights the tables.
+    "MD013": false,
+    // Bare URLs in the install instructions are fine.
+    "MD034": false
+  },
+  "globs": ["**/*.md"]
+}

@@ -1,0 +1,102 @@
+# The tap had no CI at all: the only workflow here is the one that rewrites the
+# formulae, and nothing ever looked at the script doing the rewriting or at the
+# files it produced. A formula that stopped being valid Ruby would have been
+# found by whoever next ran `brew install`.
+#
+# Frame and conventions: https://github.com/sapn95/.github/blob/main/CI.md
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Nothing here pushes, and `pull_request` runs code from strangers.
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v9.0.0
+      - name: ruff check
+        run: uvx ruff check --output-format=github .
+      - name: ruff format
+        run: uvx ruff format --check --diff .
+
+  formulae:
+    name: every formula is still valid ruby
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # `ruby -c` rather than `brew audit`: this catches the failure the updater
+      # can actually cause — a rewrite that produces a file Homebrew cannot
+      # parse — without a Homebrew install and a network round trip per formula.
+      - name: ruby -c
+        run: |
+          set -euo pipefail
+          for formula in Formula/*.rb; do
+            ruby -c "$formula" >/dev/null
+            echo "ok  $formula"
+          done
+
+      # The README table listed a formula that had been renamed and missed one
+      # that had been added, for as long as nobody happened to read it. Nothing
+      # here writes the table; it only refuses to let it fall behind again.
+      - name: the README names every formula
+        run: |
+          set -euo pipefail
+          missing=0
+          for formula in Formula/*.rb; do
+            name="$(basename "$formula" .rb)"
+            grep -q "\[$name\]" README.md || { echo "README does not list $name"; missing=1; }
+          done
+          exit "$missing"
+
+  workflows:
+    name: lint workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: actionlint
+        uses: raven-actions/actionlint@v2.2.0
+        env:
+          # shellcheck's info and style notes are advisory here; a warning or
+          # worse blocks.
+          SHELLCHECK_OPTS: --severity=warning
+      - name: yamllint
+        run: pipx run yamllint .
+      - name: markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@v24
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # gitleaks reads the history, not just the tip.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
