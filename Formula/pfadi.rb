@@ -17,8 +17,8 @@ class Pfadi < Formula
   # A pull request created with the Actions token triggers no workflows, so its
   # required checks never reported, auto-merge waited forever, and eleven of
   # them piled up unmerged. What they were keeping current was decorative.
-  url "https://github.com/sapn95/pfadi/archive/refs/tags/v0.39.1.tar.gz"
-  sha256 "f64a5258221603f7eafd09e162cea90520e091baae44e3a9aba721fec6156b37"
+  url "https://github.com/sapn95/pfadi/archive/refs/tags/v0.40.0.tar.gz"
+  sha256 "68c8732189d01727295d147c0df783936036c037622e758f47d3c255ca9190de"
   license "MIT"
   head "https://github.com/sapn95/pfadi.git", branch: "main"
 
