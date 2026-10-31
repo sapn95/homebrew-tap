@@ -207,6 +207,33 @@ def rewrite(text: str, old_tag: str, new_tag: str) -> tuple[str, list[str]]:
     return "".join(updated), notes
 
 
+def body_to_rewrite(name: str, text: str, owner: str, repo: str, tag: str) -> str:
+    """The formula body to rewrite: the project's own copy, when it has a usable one.
+
+    The project's copy is preferred so that a release which changed what the
+    formula installs actually reaches the people who installed it. It is read
+    before anything compares versions, on purpose: a formula whose url is
+    current can still have an install block two releases behind, which is how
+    this tap shipped a shell wrapper long after pfadi had replaced it.
+
+    A copy with no tag in its urls is refused. Such a formula installs `head`
+    and nothing else, so taking it would strip the url and the checksum this
+    tap installs from, and every later run would then skip the formula for
+    having no tag -- one head-only release would end the updates for good and
+    leave `brew install` building main. That copy is not a mistake either: the
+    release which adds a url to a project's own formula is always the one
+    *after* its first tag, because a checksum cannot be written before the
+    tarball it belongs to exists. zyt v1.0.0 is exactly that shape.
+    """
+    source = formula_from_release(owner, repo, tag, name)
+    if source is None:
+        return text
+    if current_tag(source) is None:
+        print(f"{name}: the copy in {tag} installs head only, keeping this body")
+        return text
+    return source
+
+
 def main() -> int:
     changed = False
     failed = False
@@ -234,14 +261,7 @@ def main() -> int:
         if not new:
             print(f"{path.name}: {owner}/{repo} has no releases yet")
             continue
-        # The project's own copy, when it keeps one, so a release that changed
-        # what the formula installs actually reaches the people who installed
-        # it. Fetched before the "already at" check on purpose: a formula whose
-        # url is current can still have an install block that is two releases
-        # behind, which is exactly how this tap shipped a shell wrapper long
-        # after the project had replaced it.
-        source = formula_from_release(owner, repo, new, path.name)
-        base = source if source is not None else text
+        base = body_to_rewrite(path.name, text, owner, repo, new)
         base_tag = current_tag(base) or old
 
         # No shortcut on the tag alone. A formula whose url is already current
@@ -252,7 +272,7 @@ def main() -> int:
 
         try:
             updated, notes = rewrite(base, base_tag, new)
-            if source is not None and base is not text:
+            if base is not text:
                 notes.append("formula from the project")
         except Exception as error:
             # Left alone on purpose. A new version with a stale checksum fails
