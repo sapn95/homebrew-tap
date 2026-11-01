@@ -29,7 +29,7 @@ jobs:
         with:
           # Nothing here pushes, and `pull_request` runs code from strangers.
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@v10.3.3
       - name: ruff check
         run: uvx ruff check --output-format=github .
       - name: ruff format
@@ -84,7 +84,7 @@ jobs:
       - name: yamllint
         run: pipx run yamllint .
       - name: markdownlint
-        uses: DavidAnson/markdownlint-cli2-action@v24
+        uses: DavidAnson/markdownlint-cli2-action@v25
 
   secrets:
     name: secret scan
